@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BMTC Crowd Tracking</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --charcoal: #2E2E2E;
+    --muted: #6B6B6B;
+    --line: #E8E8E8;
+    --pink: #EE0C8D;
+    --yellow: #FFE140;
+    --blue: #007FFF;
+    --green: #93C83E;
+    --gray: #C9C9C9;
+    --radius: 16px;
+    --gap: 24px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #FFFFFF; }
+  body {
+    font-family: 'Gabarito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    color: var(--charcoal);
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1080px; margin: 0 auto; padding: 48px 24px 56px; }
+
+  /* Header */
+  header h1 {
+    margin: 0; font-size: clamp(34px, 5vw, 52px); font-weight: 800; letter-spacing: -0.02em; color: var(--pink);
+  }
+  header p { margin: 8px 0 0; font-size: 17px; line-height: 1.5; color: var(--charcoal); }
+
+  /* Controls */
+  .controls {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--gap);
+    margin-top: 32px; padding: 20px 24px; border: 1px solid var(--line); border-radius: var(--radius);
+  }
+  @media (max-width: 800px) { .controls { grid-template-columns: 1fr; } }
+  .ctl-label {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+  }
+  .ctl-label.route { color: var(--blue); }
+  .ctl-label.tod { color: var(--pink); }
+  .ctl-label.times { color: var(--green); }
+
+  .route-wrap { position: relative; display: inline-block; }
+  button { font: inherit; cursor: pointer; border: 0; color: #FFFFFF; }
+  button:focus-visible { outline: 3px solid var(--charcoal); outline-offset: 2px; }
+  .btn-primary {
+    background: var(--blue); border-radius: 999px; padding: 11px 20px; font-size: 15px; font-weight: 600;
+  }
+  .route-name { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
+  .menu {
+    position: absolute; top: calc(100% + 8px); left: 0; z-index: 20; min-width: 300px;
+    background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px; padding: 8px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.12); display: flex; flex-direction: column; gap: 6px;
+  }
+  .menu[hidden] { display: none; }
+  .opt {
+    text-align: left; background: #F2F8FF; color: var(--charcoal); border-radius: 10px;
+    padding: 12px 14px; font-size: 15px; font-weight: 600;
+  }
+  .opt small { display: block; font-weight: 400; color: var(--muted); margin-top: 2px; font-size: 13px; }
+  .opt.disabled { background: var(--gray); color: #6E6E6E; }
+  .opt.disabled small { color: #6E6E6E; }
+
+  .seg { display: inline-flex; background: #F2F2F2; border-radius: 999px; padding: 4px; gap: 4px; flex-wrap: wrap; }
+  .seg button {
+    background: transparent; color: var(--charcoal); padding: 8px 14px; font-size: 14px; font-weight: 600; border-radius: 999px;
+  }
+  .seg button[aria-pressed="true"] { background: var(--charcoal); color: #FFFFFF; }
+
+  .legend { display: flex; flex-direction: column; gap: 12px; }
+  .legend-row { display: flex; align-items: center; gap: 12px; font-size: 15px; }
+  .legend-row input { width: 18px; height: 18px; margin: 0; accent-color: var(--charcoal); cursor: pointer; }
+  .swatch { width: 36px; height: 14px; border-radius: 6px; }
+  .legend-row label { cursor: pointer; }
+
+  /* Stage */
+  .stage {
+    position: relative; height: 320px; margin-top: 28px; border-radius: var(--radius);
+    overflow: hidden; user-select: none;
+  }
+  .wave-layer { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+  .wave-layer svg { position: absolute; left: 50%; top: 0; transform: translateX(-50%); overflow: visible; }
+  .scroller {
+    position: absolute; inset: 0; z-index: 2; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch; cursor: grab;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
+            mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
+  }
+  .scroller::-webkit-scrollbar { display: none; }
+  .track { position: relative; height: 100%; }
+  .rail {
+    position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px;
+    background: var(--charcoal); border-radius: 4px;
+  }
+  .pill {
+    position: absolute; top: 50%; left: 0; white-space: nowrap; border: 1.5px solid var(--charcoal);
+    background: #FFFFFF; color: var(--charcoal); border-radius: 999px; padding: 8px 16px;
+    font-size: 14px; font-weight: 500; transform-origin: center; will-change: transform, opacity;
+    transform: translate(-50%, -50%); cursor: pointer;
+  }
+  .pill.focus { background: var(--charcoal); color: #FFFFFF; font-weight: 700; }
+
+  .tip {
+    position: fixed; z-index: 30; pointer-events: none; background: #FFFFFF;
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 13px;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.12); min-width: 240px;
+  }
+  .tip[hidden] { display: none; }
+  .tip .t-head { font-weight: 700; font-size: 15px; margin-bottom: 8px; }
+  .tip .t-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+  .tip .t-dot { width: 12px; height: 12px; border-radius: 4px; flex: 0 0 auto; }
+  .tip .t-val { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* Current stop card */
+  .card {
+    margin-top: 24px; border: 1px solid var(--line); border-radius: var(--radius); padding: 24px;
+  }
+  .card-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  .eyebrow { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+  .stop-name { font-size: 28px; font-weight: 800; margin-top: 6px; letter-spacing: -0.01em; }
+  .stop-index { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
+  @media (max-width: 600px) { .metrics { grid-template-columns: 1fr; } }
+  .metric { border-radius: 12px; background: #FAFAFA; padding: 16px 18px; }
+  .metric-time { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+  .chip { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+  .metric-vals { display: flex; gap: 28px; margin-top: 12px; flex-wrap: wrap; }
+  .metric-vals div span { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .metric-vals div b { display: block; font-size: 26px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  .hint { margin: 16px 0 0; font-size: 13px; color: var(--muted); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+    background: var(--charcoal); color: #FFFFFF; padding: 10px 18px; border-radius: 999px;
+    font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .25s;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<main class="page">
+  <header>
+    <h1>BMTC Crowd Tracking</h1>
+    <p>Boarding and deboarding at each stop along the route, for morning and evening peaks.</p>
+  </header>
+
+  <section class="controls">
+    <div>
+      <div class="ctl-label route">Route</div>
+      <div class="route-wrap">
+        <button class="btn-primary" id="routeBtn" aria-expanded="false" aria-controls="routeMenu">Select route ▾</button>
+        <div class="menu" id="routeMenu" hidden>
+          <button class="opt" id="routeA">Silk Board to Hebbal<small>V500</small></button>
+          <button class="opt disabled" id="routeB" aria-disabled="true">KR Market to Silk Institute<small>115</small></button>
+        </div>
+      </div>
+      <p class="route-name" id="routeName">Silk Board to Hebbal (V500)</p>
+    </div>
+
+    <div>
+      <div class="ctl-label tod">Time of day</div>
+      <div class="seg" role="group" aria-label="Time of day">
+        <button data-mode="all" aria-pressed="true">All day</button>
+        <button data-mode="am" aria-pressed="false">7–9 AM</button>
+        <button data-mode="pm" aria-pressed="false">5–7 PM</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="ctl-label times">Times</div>
+      <div class="legend" id="legend"></div>
+    </div>
+  </section>
+
+  <section class="stage" id="stage" aria-label="Stop route">
+    <div class="wave-layer"><svg id="wave" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    <div class="scroller" id="scroller" tabindex="0">
+      <div class="track" id="track">
+        <div class="rail"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" aria-live="polite">
+    <div class="card-top">
+      <div>
+        <div class="eyebrow">Current stop</div>
+        <div class="stop-name" id="stopName"></div>
+      </div>
+      <div class="stop-index" id="stopIndex"></div>
+    </div>
+    <div class="metrics" id="metrics"></div>
+  </section>
+
+  <p class="hint">Scroll or drag along the route to move between stops. Hover over the graph for exact values.</p>
+</main>
+
+<div class="tip" id="tip" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  // ---------- Layout ----------
+  const COL = 200;          // distance between stops
+  const CY_OFFSET = 160;    // centre line (stage is 320px tall)
+  const AMP = 128;          // max wave height on each side of the line
+  const WAVE_W = 300;       // width of the wave shown at the current stop
+
+  // ---------- Times ----------
+  const TIMES = [
+    { id: 'am', label: '7–9 AM', color: '#EE0C8D', on: true, top: false },
+    { id: 'pm', label: '5–7 PM', color: '#FFE140', on: true, top: true }   // yellow always on top
+  ];
+
+  // ---------- Stop data ----------
+  // am/pm = [boarding, deboarding]
+  const STOPS = [
+    { name: 'Central Silk Board',            am: [55, 5],  pm: [30, 8] },
+    { name: 'Agara Junction',                am: [18, 6],  pm: [15, 10] },
+    { name: 'Sarjapura Ring Road Junction',  am: [25, 8],  pm: [20, 12] },
+    { name: 'Bellandur',                     am: [22, 15], pm: [20, 18] },
+    { name: 'Eco Space',                     am: [10, 35], pm: [35, 12] },
+    { name: 'Kadabisanahalli',               am: [12, 18], pm: [20, 15] },
+    { name: 'Marathahalli Bridge',           am: [30, 20], pm: [25, 25] },
+    { name: 'Dodda Nekkundi',                am: [12, 8],  pm: [12, 10] },
+    { name: 'Mahadevapura',                  am: [10, 10], pm: [12, 12] },
+    { name: 'KR Puram Railway Station',      am: [20, 12], pm: [18, 15] },
+    { name: 'Tin Factory',                   am: [25, 15], pm: [25, 20] },
+    { name: 'Kasturi Nagar Junction',        am: [8, 5],   pm: [10, 8] },
+    { name: 'Horamavu Petrol Bunk',          am: [8, 7],   pm: [12, 10] },
+    { name: 'Kalyan Nagar',                  am: [15, 10], pm: [18, 12] },
+    { name: 'Hennur Cross',                  am: [12, 8],  pm: [12, 10] },
+    { name: 'Nagawara Junction',             am: [12, 12], pm: [15, 15] },
+    { name: 'Manyata Embassy Business Park', am: [8, 35],  pm: [35, 10] },
+    { name: 'Hebbala Bridge',                am: [5, 45],  pm: [8, 40] }
+  ];
+  const N = STOPS.length;
+  const SCALE_MAX = Math.max(...STOPS.flatMap(s => [s.am[0], s.am[1], s.pm[0], s.pm[1]]));
+
+  const fmt = n => Math.round(n).toLocaleString('en-IN');
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  // ---------- DOM ----------
+  const svg = document.getElementById('wave');
+  const stage = document.getElementById('stage');
+  const scroller = document.getElementById('scroller');
+  const track = document.getElementById('track');
+  const tip = document.getElementById('tip');
+  const metrics = document.getElementById('metrics');
+
+  // Stop pills
+  const pills = STOPS.map((s, i) => {
+    const el = document.createElement('button');
+    el.className = 'pill';
+    el.textContent = s.name;
+    el.setAttribute('aria-label', s.name);
+    el.addEventListener('click', () => scroller.scrollTo({ left: i * COL, behavior: 'smooth' }));
+    track.appendChild(el);
+    return el;
+  });
+
+  // Legend
+  const legend = document.getElementById('legend');
+  TIMES.forEach(T => {
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+    row.innerHTML = `<input type="checkbox" id="t-${T.id}" checked>
+      <span class="swatch" style="background:${T.color}"></span>
+      <label for="t-${T.id}">${T.label}</label>`;
+    legend.appendChild(row);
+    row.querySelector('input').addEventListener('change', e => {
+      T.on = e.target.checked;
+      setMode(null);
+      drawWave();
+      showTipFromCentre(); // refresh if visible
+    });
+  });
+
+  // Time-of-day controls
+  const segBtns = document.querySelectorAll('.seg button');
+  function setMode(mode) {
+    segBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+  }
+  segBtns.forEach(btn => btn.addEventListener('click', () => {
+    const mode = btn.dataset.mode;
+    TIMES.forEach(T => {
+      T.on = mode === 'all' || (mode === 'am' && T.id === 'am') || (mode === 'pm' && T.id === 'pm');
+      document.getElementById('t-' + T.id).checked = T.on;
+    });
+    setMode(mode);
+    drawWave();
+  }));
+
+  // Route selector
+  const routeBtn = document.getElementById('routeBtn');
+  const menu = document.getElementById('routeMenu');
+  const toast = document.getElementById('toast');
+  let toastTimer = null;
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+  }
+  routeBtn.addEventListener('click', () => {
+    const open = menu.hidden;
+    menu.hidden = !open;
+    routeBtn.setAttribute('aria-expanded', String(open));
+  });
+  document.getElementById('routeA').addEventListener('click', () => {
+    menu.hidden = true;
+    routeBtn.setAttribute('aria-expanded', 'false');
+  });
+  document.getElementById('routeB').addEventListener('click', () => showToast('Unavailable at the moment'));
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.route-wrap')) {
+      menu.hidden = true;
+      routeBtn.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  // ---------- Layout sizing ----------
+  function layout() {
+    const half = scroller.clientWidth / 2;
+    track.style.width = (scroller.clientWidth + (N - 1) * COL) + 'px';
+    pills.forEach((el, i) => { el.style.left = (half + i * COL) + 'px'; });
+    startAnim();
+  }
+
+  // ---------- Animated state ----------
+  // value[ti][kind]: current displayed value, eased toward the interpolated target
+  const value = TIMES.map(() => ({ b: 0, d: 0 }));
+  let focus = -1;
+  let raf = null;
+
+  // Interpolated target for the fractional scroll position
+  function targetValues(f) {
+    const fi = Math.floor(f), t = f - fi, fj = Math.min(N - 1, fi + 1);
+    return TIMES.map(T => ({
+      b: lerp(STOPS[fi][T.id][0], STOPS[fj][T.id][0], t),
+      d: lerp(STOPS[fi][T.id][1], STOPS[fj][T.id][1], t)
+    }));
+  }
+
+  // ---------- Wave drawing (current stop only) ----------
+  const profile = [
+    { x: -WAVE_W / 2, m: 0 },
+    { x: -WAVE_W / 2 + 40, m: 0.55 },
+    { x: -WAVE_W / 4, m: 0.92 },
+    { x: 0, m: 0.68 },
+    { x: WAVE_W / 4, m: 1 },
+    { x: WAVE_W / 2 - 40, m: 0.6 },
+    { x: WAVE_W / 2, m: 0 }
+  ];
+
+  function smooth(pts) {
+    let d = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+      const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
+      const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+      d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+    }
+    return d;
+  }
+
+  function drawWave() {
+    const cx = WAVE_W / 2 + 10;  // svg local centre
+    const cy = CY_OFFSET;
+    const svgW = WAVE_W + 20;
+    svg.setAttribute('width', svgW);
+    svg.setAttribute('height', CY_OFFSET * 2);
+    svg.setAttribute('viewBox', `0 0 ${svgW} ${CY_OFFSET * 2}`);
+    svg.style.left = '50%';
+    svg.style.transform = 'translateX(-50%)';
+
+    let out = '';
+    for (const kind of ['b', 'd']) {
+      const sign = kind === 'b' ? -1 : 1;          // boarding above, deboarding below
+      // Draw larger first, smaller on top, yellow always on top
+      const order = TIMES.map((T, ti) => ({ T, ti }))
+        .filter(o => o.T.on)
+        .sort((a, b) => value[b.ti][kind] - value[a.ti][kind])
+        .sort((a, b) => (a.T.top ? 1 : 0) - (b.T.top ? 1 : 0));
+
+      for (const { T, ti } of order) {
+        const h = (value[ti][kind] / SCALE_MAX) * AMP;
+        const pts = profile.map(p => ({ x: cx + p.x, y: cy + sign * h * p.m }));
+        const line = smooth(pts);
+        const area = `${line} L${cx + WAVE_W / 2},${cy} L${cx - WAVE_W / 2},${cy} Z`;
+        out += `<path d="${area}" fill="${T.color}"/>`;
+      }
+    }
+    svg.innerHTML = out;
+  }
+
+  // ---------- Card ----------
+  function updateCard(i) {
+    const s = STOPS[i];
+    document.getElementById('stopName').textContent = s.name;
+    document.getElementById('stopIndex').textContent = `Stop ${i + 1} of ${N}`;
+    metrics.innerHTML = TIMES.map(T => `
+      <div class="metric">
+        <div class="metric-time"><span class="chip" style="background:${T.color}"></span>${T.label}</div>
+        <div class="metric-vals">
+          <div><span>Boarding</span><b>${fmt(s[T.id][0])}</b></div>
+          <div><span>Deboarding</span><b>${fmt(s[T.id][1])}</b></div>
+        </div>
+      </div>`).join('');
+  }
+
+  // ---------- Stop labels: scale and fade with distance from centre ----------
+  function drawPills(cxTrack) {
+    const sigma = COL * 1.4;
+    const half = scroller.clientWidth / 2;
+    pills.forEach((el, i) => {
+      const x = half + i * COL;
+      const d = (x - cxTrack) / sigma;
+      const g = Math.exp(-d * d);
+      el.style.transform = `translate(-50%, -50%) scale(${(0.6 + 0.4 * g).toFixed(3)})`;
+      el.style.opacity = (0.3 + 0.7 * g).toFixed(3);
+    });
+  }
+
+  // ---------- Animation loop ----------
+  function animate() {
+    const f = clamp(scroller.scrollLeft / COL, 0, N - 1);
+    const cxTrack = scroller.scrollLeft + scroller.clientWidth / 2;
+
+    const tgt = targetValues(f);
+    let moving = false;
+    TIMES.forEach((T, ti) => {
+      for (const k of ['b', 'd']) {
+        const diff = tgt[ti][k] - value[ti][k];
+        if (Math.abs(diff) > 0.05) { value[ti][k] += diff * 0.2; moving = true; }
+        else value[ti][k] = tgt[ti][k];
+      }
+    });
+
+    const newFocus = clamp(Math.round(f), 0, N - 1);
+    if (newFocus !== focus) {
+      focus = newFocus;
+      pills.forEach((el, i) => el.classList.toggle('focus', i === focus));
+      updateCard(focus);
+    }
+
+    drawPills(cxTrack);
+    drawWave();
+    raf = moving ? requestAnimationFrame(animate) : null;
+  }
+  function startAnim() { if (!raf) raf = requestAnimationFrame(animate); }
+
+  scroller.addEventListener('scroll', startAnim, { passive: true });
+  window.addEventListener('resize', () => { layout(); });
+
+  // ---------- Tooltip over the central graph ----------
+  function showTipAt(clientX, clientY) {
+    if (focus < 0) return;
+    const s = STOPS[focus];
+    let rows = '';
+    TIMES.forEach(T => {
+      if (!T.on) return;
+      rows += `<div class="t-row"><span class="t-dot" style="background:${T.color}"></span>
+        <span>${T.label}</span>
+        <span class="t-val">Boarding ${fmt(s[T.id][0])} · Deboarding ${fmt(s[T.id][1])}</span></div>`;
+    });
+    if (!rows) rows = '<div class="t-row">No times selected.</div>';
+    tip.innerHTML = `<div class="t-head">${s.name}</div>${rows}`;
+    tip.hidden = false;
+    const tw = tip.offsetWidth;
+    tip.style.left = (clientX + 16 + tw > window.innerWidth ? clientX - tw - 16 : clientX + 16) + 'px';
+    tip.style.top = (clientY + 16) + 'px';
+  }
+  function showTipFromCentre() { /* placeholder to keep tooltip current when toggling */ tip.hidden = true; }
+
+  stage.addEventListener('mousemove', e => {
+    const r = stage.getBoundingClientRect();
+    const centre = r.left + r.width / 2;
+    if (Math.abs(e.clientX - centre) <= WAVE_W / 2 + 10) showTipAt(e.clientX, e.clientY);
+    else tip.hidden = true;
+  });
+  stage.addEventListener('mouseleave', () => { tip.hidden = true; });
+
+  // ---------- Init ----------
+  layout();
+  const f0 = clamp(scroller.scrollLeft / COL, 0, N - 1);
+  const init = targetValues(f0);
+  TIMES.forEach((T, ti) => { value[ti] = { ...init[ti] }; });
+  focus = -1;
+  animate();
+})();
+</script>
+</body>
+</html>
